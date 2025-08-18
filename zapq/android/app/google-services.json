@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "519618748711",
+    "project_id": "zapq-73533",
+    "storage_bucket": "zapq-73533.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:519618748711:android:b8ce333d06c5d59eaf8902",
+        "android_client_info": {
+          "package_name": "com.zappq.queue"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "519618748711-umis204vqtbbuf04joffrmqtn7hf2vev.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.zappq.queue",
+            "certificate_hash": "d07c939a6fee4e208e9b22ad8c7e0619e1045bd8"
+          }
+        },
+        {
+          "client_id": "519618748711-6cqqhunstbi64iffr9b7eqjbm3o20dvm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCVjgR9Bt_HcGXbPOjoYwbyb1hi-tbnoRE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "519618748711-6cqqhunstbi64iffr9b7eqjbm3o20dvm.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
