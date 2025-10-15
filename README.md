@@ -195,7 +195,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👥 Team
 
-- **Developer**: [Your Name]
+- **Developer**: Prince Ghevariya
 - **Project Type**: Mobile Application Development
 - **Course**: MAD (Mobile Application Development)
 
