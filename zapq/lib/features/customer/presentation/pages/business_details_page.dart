@@ -5,6 +5,11 @@ import '../../../../shared/models/business_model.dart';
 import '../../../../shared/providers/booking_provider.dart';
 import '../../../../shared/providers/auth_provider.dart';
 import '../../../../shared/models/booking_model.dart';
+import '../../../../shared/widgets/review_submission_widget.dart';
+import '../../../../shared/widgets/customer_offers_widget.dart';
+import '../../../../shared/services/review_service.dart';
+import '../../../../shared/models/review_model.dart';
+import '../../../../shared/providers/offer_provider.dart';
 
 class BusinessDetailsPage extends StatefulWidget {
   final BusinessModel business;
@@ -21,11 +26,69 @@ class BusinessDetailsPage extends StatefulWidget {
 class _BusinessDetailsPageState extends State<BusinessDetailsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final ReviewService _reviewService = ReviewService();
+  List<ReviewModel> _reviews = [];
+  bool _loadingReviews = true;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
+    _loadReviews();
+    _loadUserBookings();
+    _loadOffers();
+  }
+
+  Future<void> _loadOffers() async {
+    try {
+      print('🎯 BusinessDetailsPage: Loading active offers for business: ${widget.business.id}');
+      final offerProvider = context.read<OfferProvider>();
+      
+      // Load ACTIVE offers specifically for this business (for customers)
+      await offerProvider.loadActiveBusinessOffers(widget.business.id);
+      
+      // Also get the filtered offers for debugging
+      final businessOffers = offerProvider.getOffersForBusiness(widget.business.id);
+      print('✅ BusinessDetailsPage: Loaded ${businessOffers.length} active offers for business ${widget.business.id}');
+      
+      // Debug: Print offer details
+      for (var offer in businessOffers) {
+        print('📋 Offer: ${offer.title} - Active: ${offer.isActive} - Business: ${offer.businessId}');
+        print('📅 Start: ${offer.startDate} - End: ${offer.endDate} - Now: ${DateTime.now()}');
+      }
+    } catch (e) {
+      print('❌ BusinessDetailsPage: Error loading offers: $e');
+    }
+  }
+
+  Future<void> _loadUserBookings() async {
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.userModel;
+    
+    if (user != null) {
+      final bookingProvider = context.read<BookingProvider>();
+      await bookingProvider.getUserBookings(user.id);
+    }
+  }
+
+  Future<void> _loadReviews() async {
+    try {
+      setState(() {
+        _loadingReviews = true;
+      });
+      
+      final reviews = await _reviewService.getBusinessReviews(widget.business.id);
+      
+      setState(() {
+        _reviews = reviews;
+        _loadingReviews = false;
+      });
+    } catch (e) {
+      print('Error loading reviews: $e');
+      setState(() {
+        _loadingReviews = false;
+      });
+    }
   }
 
   @override
@@ -63,25 +126,9 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage>
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Business image placeholder with gradient
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          AppColors.primary.withValues(alpha: 0.8),
-                          AppColors.primary,
-                        ],
-                      ),
-                    ),
-                    child: Icon(
-                      _getCategoryIcon(widget.business.category),
-                      size: 80,
-                      color: Colors.white.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  // Gradient overlay
+                  // Business thumbnail image or fallback
+                  _buildBusinessHeaderImage(),
+                  // Gradient overlay for text readability
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -248,6 +295,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage>
                 indicatorColor: AppColors.primary,
                 tabs: const [
                   Tab(text: 'Services', icon: Icon(Icons.room_service, size: 20)),
+                  Tab(text: 'Photos', icon: Icon(Icons.photo_library, size: 20)),
                   Tab(text: 'About', icon: Icon(Icons.info_outline, size: 20)),
                   Tab(text: 'Reviews', icon: Icon(Icons.star_outline, size: 20)),
                 ],
@@ -261,6 +309,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage>
               controller: _tabController,
               children: [
                 _buildServicesTab(),
+                _buildPhotosTab(),
                 _buildAboutTab(),
                 _buildReviewsTab(),
               ],
@@ -268,6 +317,15 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage>
           ),
         ],
       ),
+      floatingActionButton: _tabController.index == 3 // Only show on Reviews tab
+          ? FloatingActionButton.extended(
+              onPressed: _showReviewDialog,
+              icon: const Icon(Icons.rate_review),
+              label: const Text('Write Review'),
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            )
+          : null,
     );
   }
 
@@ -396,6 +454,110 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage>
     );
   }
 
+  Widget _buildPhotosTab() {
+    return Container(
+      color: AppColors.background,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Photo Gallery Section
+            _buildPhotoGallerySection(),
+            
+            // Special Offers Section
+            const SizedBox(height: 24),
+            Consumer<OfferProvider>(
+              builder: (context, offerProvider, child) {
+                if (offerProvider.isLoading) {
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Icon(Icons.local_offer, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Text('Loading offers...', style: TextStyle(color: Colors.grey)),
+                        const SizedBox(width: 16),
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                
+                final businessOffers = offerProvider.getOffersForBusiness(widget.business.id);
+                print('🎯 Consumer: Found ${businessOffers.length} offers for business ${widget.business.id}');
+                print('🎯 Consumer: Total active offers in provider: ${offerProvider.activeOffers.length}');
+                print('🎯 Consumer: Loading state: ${offerProvider.isLoading}');
+                print('🎯 Consumer: Error: ${offerProvider.errorMessage}');
+                
+                return CustomerOffersWidget(
+                  offers: businessOffers,
+                  onOfferTapped: (offer) {
+                    // Show offer details
+                    _showOfferDialog(offer);
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showImageDialog(String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: GestureDetector(
+          onTap: () => Navigator.of(context).pop(),
+          child: InteractiveViewer(
+            child: Image.network(
+              imageUrl,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  padding: const EdgeInsets.all(32),
+                  color: Colors.black54,
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'Failed to load image',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showOfferDialog(offer) {
+    // TODO: Implement offer details dialog
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Offer: ${offer.title}'),
+        backgroundColor: AppColors.primary,
+      ),
+    );
+  }
+
   Widget _buildAboutTab() {
     return Container(
       color: AppColors.background,
@@ -466,29 +628,457 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage>
   Widget _buildReviewsTab() {
     return Container(
       color: AppColors.background,
-      child: Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.rate_review, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Reviews coming soon!',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
+            // Rating Summary Card
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        // Overall Rating
+                        Column(
+                          children: [
+                            Text(
+                              _getAverageRating().toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontSize: 48,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: List.generate(5, (index) {
+                                final avgRating = _getAverageRating();
+                                return Icon(
+                                  index < avgRating.floor()
+                                      ? Icons.star
+                                      : index < avgRating
+                                          ? Icons.star_half
+                                          : Icons.star_border,
+                                  color: Colors.amber,
+                                  size: 20,
+                                );
+                              }),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${_getTotalReviewCount()} reviews',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 24),
+                        
+                        // Rating Breakdown
+                        Expanded(
+                          child: Column(
+                            children: List.generate(5, (index) {
+                              final star = 5 - index;
+                              final percentage = _calculateRatingPercentage(star);
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      '$star',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(Icons.star, size: 14, color: Colors.amber),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: LinearProgressIndicator(
+                                        value: percentage / 100,
+                                        backgroundColor: Colors.grey[200],
+                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                          AppColors.primary,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '${percentage.toInt()}%',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Write Review Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          _showReviewDialog();
+                        },
+                        icon: const Icon(Icons.edit),
+                        label: const Text('Write a Review'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 8),
+            
+            const SizedBox(height: 20),
+            
+            // Reviews List
             Text(
-              'Customer reviews will be displayed here',
-              style: TextStyle(
+              'Customer Reviews',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            
+            // Real Reviews from Firestore
+            if (_loadingReviews) ...[
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            ] else if (_reviews.isNotEmpty) ...[
+              ..._reviews.map((review) => _buildReviewItem(
+                review.customerName,
+                review.rating,
+                review.comment,
+                review.createdAt,
+              )),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.rate_review_outlined,
+                      size: 48,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No reviews yet',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Be the first to review this business!',
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReviewItem(String name, double rating, String comment, DateTime date) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  child: Text(
+                    name[0],
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Row(
+                            children: List.generate(5, (index) {
+                              return Icon(
+                                index < rating.floor()
+                                    ? Icons.star
+                                    : index < rating
+                                        ? Icons.star_half
+                                        : Icons.star_border,
+                                color: Colors.amber,
+                                size: 16,
+                              );
+                            }),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _formatDate(date),
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              comment,
+              style: const TextStyle(
                 fontSize: 14,
-                color: Colors.grey[500],
+                height: 1.4,
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  double _calculateRatingPercentage(int star) {
+    if (_reviews.isEmpty) {
+      return 0.0;
+    }
+    
+    // Calculate actual percentage based on real reviews
+    final starCount = _reviews.where((review) => review.rating.round() == star).length;
+    final percentage = (starCount / _reviews.length) * 100;
+    
+    return percentage;
+  }
+
+  double _getAverageRating() {
+    if (_reviews.isEmpty) {
+      return 0.0;
+    }
+    
+    final totalRating = _reviews.fold<double>(0, (sum, review) => sum + review.rating);
+    return totalRating / _reviews.length;
+  }
+
+  int _getTotalReviewCount() {
+    return _reviews.length;
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date).inDays;
+    
+    if (difference == 0) {
+      return 'Today';
+    } else if (difference == 1) {
+      return 'Yesterday';
+    } else if (difference < 30) {
+      return '$difference days ago';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+
+  void _showReviewDialog() async {
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.userModel;
+    
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please log in to write a review'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // For now, allow any logged-in user to write reviews
+    // TODO: Later implement proper booking validation when booking system is fully working
+    print('👤 User ${user.name} wants to write a review for business ${widget.business.name}');
+
+    // Check if user has already reviewed this business
+    final hasReviewed = await _reviewService.hasCustomerReviewedBooking(
+      user.id, 
+      widget.business.id, 
+      null // Check for any review, not specific to booking
+    );
+
+    if (hasReviewed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You have already reviewed this business ✓'),
+          backgroundColor: Colors.blue,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: ReviewSubmissionWidget(
+          business: widget.business,
+          customer: user,
+          onReviewSubmitted: (review) async {
+            print('🚀 BUSINESS_DETAILS: Review submission started');
+            
+            // Close review dialog first
+            Navigator.of(context).pop();
+            
+            // Store the main context before showing loading dialog
+            final mainContext = context;
+            
+            // Show loading dialog and store its context
+            BuildContext? loadingContext;
+            showDialog(
+              context: mainContext,
+              barrierDismissible: false,
+              builder: (BuildContext dialogContext) {
+                loadingContext = dialogContext; // Store the loading dialog context
+                return WillPopScope(
+                  onWillPop: () async => false,
+                  child: const Dialog(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(width: 20),
+                          Text('Submitting review...'),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+
+            try {
+              print('💾 BUSINESS_DETAILS: Calling ReviewService.submitReview...');
+              
+              // Save review to Firestore
+              final success = await _reviewService.submitReview(review);
+              
+              print('📤 BUSINESS_DETAILS: ReviewService returned: $success');
+              
+              // Close loading dialog using its specific context
+              if (loadingContext != null && mounted) {
+                Navigator.of(loadingContext!).pop();
+              }
+              
+              if (success) {
+                print('✅ BUSINESS_DETAILS: Review submitted successfully, reloading reviews...');
+                
+                // Reload reviews to show the new one
+                await _loadReviews();
+                
+                // Force a rebuild to show new reviews
+                if (mounted) {
+                  setState(() {});
+                }
+                
+                // Show success message
+                if (mounted) {
+                  ScaffoldMessenger.of(mainContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Thank you for your review! ⭐'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+                }
+              } else {
+                print('❌ BUSINESS_DETAILS: Review submission failed');
+                // Show error message
+                if (mounted) {
+                  ScaffoldMessenger.of(mainContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Failed to submit review. Please try again.'),
+                      backgroundColor: Colors.red,
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+                }
+              }
+            } catch (e) {
+              print('💥 BUSINESS_DETAILS: Exception in review submission: $e');
+              
+              // Ensure loading dialog is closed using its specific context
+              if (loadingContext != null && mounted) {
+                Navigator.of(loadingContext!).pop();
+              }
+              
+              if (mounted) {
+                ScaffoldMessenger.of(mainContext).showSnackBar(
+                  SnackBar(
+                    content: Text('Error: $e'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 5),
+                  ),
+                );
+              }
+            }
+          },
         ),
       ),
     );
@@ -553,6 +1143,164 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage>
         ],
       ),
     );
+  }
+
+  Widget _buildBusinessHeaderImage() {
+    // Use profileImageUrl first, fallback to imageUrls, then default gradient
+    String? imageUrl = widget.business.profileImageUrl;
+    if ((imageUrl == null || imageUrl.isEmpty) && widget.business.imageUrls.isNotEmpty) {
+      imageUrl = widget.business.imageUrls.first;
+    }
+
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      // Show business thumbnail image
+      return Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          print('❌ Error loading business header image: $error');
+          return _buildFallbackHeaderImage();
+        },
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            color: AppColors.primary,
+            child: Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                    : null,
+                color: Colors.white,
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      // Show fallback gradient with icon
+      return _buildFallbackHeaderImage();
+    }
+  }
+
+  Widget _buildFallbackHeaderImage() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.primary.withValues(alpha: 0.8),
+            AppColors.primary,
+          ],
+        ),
+      ),
+      child: Icon(
+        _getCategoryIcon(widget.business.category),
+        size: 80,
+        color: Colors.white.withValues(alpha: 0.3),
+      ),
+    );
+  }
+
+  Widget _buildPhotoGallerySection() {
+    // Combine profileImageUrl and imageUrls into one list
+    List<String> allImages = [];
+    
+    // Add profile image first if available
+    if (widget.business.profileImageUrl != null && widget.business.profileImageUrl!.isNotEmpty) {
+      allImages.add(widget.business.profileImageUrl!);
+    }
+    
+    // Add gallery images
+    allImages.addAll(widget.business.imageUrls);
+    
+    if (allImages.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Business Gallery',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 1,
+            ),
+            itemCount: allImages.length,
+            itemBuilder: (context, index) {
+              return GestureDetector(
+                onTap: () => _showImageDialog(allImages[index]),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    allImages[index],
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.image_not_supported,
+                          size: 32,
+                          color: Colors.grey[400],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    } else {
+      // Empty state
+      return Container(
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[200]!),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.photo_library_outlined,
+              size: 48,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No photos available',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'This business hasn\'t uploaded any photos yet',
+              style: TextStyle(
+                color: Colors.grey[500],
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   IconData _getCategoryIcon(String category) {

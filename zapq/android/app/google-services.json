@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "519618748711-umis204vqtbbuf04joffrmqtn7hf2vev.apps.googleusercontent.com",
+          "client_id": "519618748711-525g9sm35m5ind8f0514cshp9tjpelrp.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.zappq.queue",
-            "certificate_hash": "d07c939a6fee4e208e9b22ad8c7e0619e1045bd8"
+            "certificate_hash": "2bee1c95a3a886484c7c1590a34cad2eeabda3be"
           }
         },
         {

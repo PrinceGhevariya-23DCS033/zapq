@@ -12,6 +12,7 @@ import 'shared/providers/enhanced_business_provider.dart';
 import 'shared/providers/booking_provider.dart';
 import 'shared/providers/slot_provider.dart';
 import 'shared/providers/queue_provider.dart';
+import 'shared/providers/offer_provider.dart';
 import 'features/authentication/presentation/pages/splash_page.dart';
 import 'features/authentication/presentation/pages/login_page.dart';
 import 'features/authentication/presentation/pages/register_page.dart';
@@ -54,6 +55,7 @@ class ZapQApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => BookingProvider()),
         ChangeNotifierProvider(create: (_) => SlotProvider()),
         ChangeNotifierProvider(create: (_) => QueueProvider()),
+        ChangeNotifierProvider(create: (_) => OfferProvider()),
       ],
       child: MaterialApp.router(
         title: AppConstants.appName,

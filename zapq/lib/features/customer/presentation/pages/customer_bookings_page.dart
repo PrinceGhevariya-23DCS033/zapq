@@ -5,6 +5,9 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/providers/auth_provider.dart';
 import '../../../../shared/providers/booking_provider.dart';
 import '../../../../shared/models/booking_model.dart';
+import '../../../../shared/widgets/review_submission_widget.dart';
+import '../../../../shared/models/business_model.dart';
+import '../../../../shared/services/review_service.dart';
 
 class CustomerBookingsPage extends StatefulWidget {
   const CustomerBookingsPage({super.key});
@@ -15,6 +18,7 @@ class CustomerBookingsPage extends StatefulWidget {
 
 class _CustomerBookingsPageState extends State<CustomerBookingsPage> {
   String _selectedFilter = 'all';
+  final ReviewService _reviewService = ReviewService();
 
   @override
   void initState() {
@@ -406,10 +410,10 @@ class _CustomerBookingsPageState extends State<CustomerBookingsPage> {
               ),
             ),
             
-            // Action buttons for upcoming bookings
+            // Action buttons
+            const SizedBox(height: 16),
             if (booking.status == BookingStatus.confirmed || 
                 booking.status == BookingStatus.pending) ...[
-              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
@@ -438,6 +442,51 @@ class _CustomerBookingsPageState extends State<CustomerBookingsPage> {
                     ),
                   ),
                 ],
+              ),
+            ] else if (booking.status == BookingStatus.completed) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showBookingDetails(booking),
+                      icon: const Icon(Icons.info, size: 18),
+                      label: const Text('View Details'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: BorderSide(color: AppColors.primary),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showReviewDialog(booking),
+                      icon: const Icon(Icons.rate_review, size: 18),
+                      label: const Text('Write Review'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              // For cancelled or other status bookings, only show details
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showBookingDetails(booking),
+                  icon: const Icon(Icons.info, size: 18),
+                  label: const Text('View Details'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
               ),
             ],
           ],
@@ -587,6 +636,115 @@ class _CustomerBookingsPageState extends State<CustomerBookingsPage> {
             child: Text(value),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showReviewDialog(BookingModel booking) async {
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.userModel;
+    
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please log in to write a review'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+        // Check if user has already reviewed this booking
+    final hasReviewed = await _reviewService.hasCustomerReviewedBooking(
+      user.id, 
+      booking.businessId, 
+      booking.id
+    );
+
+    if (hasReviewed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You have already submitted a review for this booking ✓'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Create a business model from booking data
+    final business = BusinessModel(
+      id: booking.businessId,
+      ownerId: '',
+      name: booking.businessName ?? 'Unknown Business',
+      description: '',
+      category: '',
+      address: booking.businessAddress ?? '',
+      phoneNumber: '',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: ReviewSubmissionWidget(
+          business: business,
+          customer: user,
+          bookingId: booking.id,
+          onReviewSubmitted: (review) async {
+            print('🚀 CALLBACK: Review submission started');
+            print('📋 CALLBACK: Review data: ${review.toJson()}');
+            
+            // Show loading indicator
+            Navigator.of(context).pop(); // Close dialog first
+            
+            // Show loading
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => const Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+
+            print('💾 CALLBACK: Calling ReviewService.submitReview...');
+            // Save review to Firestore
+            final success = await _reviewService.submitReview(review);
+            
+            print('📤 CALLBACK: ReviewService returned: $success');
+            
+            // Close loading dialog
+            if (mounted) Navigator.of(context).pop();
+            
+            if (success) {
+              print('✅ CALLBACK: Review submitted successfully');
+              // Show success message
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Thank you for your review! ⭐'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+              }
+            } else {
+              print('❌ CALLBACK: Review submission failed');
+              // Show error message
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to submit review. Please try again.'),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+              }
+            }
+            
+            print('🏁 CALLBACK: Review submission completed');
+          },
+        ),
       ),
     );
   }

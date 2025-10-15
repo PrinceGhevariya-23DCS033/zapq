@@ -2,6 +2,16 @@
     <!-- Internet permission for Firebase -->
     <uses-permission android:name="android.permission.INTERNET" />
     
+    <!-- Camera permission for image picker -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    
+    <!-- Storage permissions for image handling -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    
+    <!-- Notification permission for Firebase messaging -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
     <application
         android:label="zapq"
         android:name="${applicationName}"

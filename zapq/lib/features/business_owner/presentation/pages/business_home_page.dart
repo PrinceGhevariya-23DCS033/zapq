@@ -8,6 +8,12 @@ import '../../../../shared/providers/enhanced_business_provider.dart';
 import '../../../../shared/providers/booking_provider.dart';
 import '../../../../shared/models/business_model.dart';
 import '../../../../shared/models/booking_model.dart';
+import '../../../../shared/widgets/photo_gallery_widget.dart';
+import '../../../../shared/widgets/offer_management_widget.dart';
+import '../../../../shared/services/review_service.dart';
+import '../../../../shared/providers/offer_provider.dart';
+import '../../../business/presentation/pages/business_reviews_page.dart';
+import '../../../business/presentation/pages/business_analytics_page.dart';
 
 class BusinessHomePage extends StatefulWidget {
   const BusinessHomePage({super.key});
@@ -28,7 +34,7 @@ class _BusinessHomePageState extends State<BusinessHomePage> {
         });
       }),
       const BusinessQueueTab(),
-      const BusinessAnalyticsTab(),
+      const BusinessAnalyticsPage(),
       const BusinessProfileTab(),
     ];
 
@@ -77,6 +83,9 @@ class BusinessDashboardTab extends StatefulWidget {
 }
 
 class _BusinessDashboardTabState extends State<BusinessDashboardTab> {
+  final ReviewService _reviewService = ReviewService();
+  Map<String, dynamic> _reviewStatistics = {};
+
   @override
   void initState() {
     super.initState();
@@ -101,6 +110,59 @@ class _BusinessDashboardTabState extends State<BusinessDashboardTab> {
     
     // Load real bookings for this business
     _loadBusinessBookings();
+    
+    // Load real review statistics
+    _loadReviewStatistics();
+    
+    // Load business offers
+    _loadBusinessOffers();
+  }
+
+  // Load real review statistics for the business
+  Future<void> _loadReviewStatistics() async {
+    try {
+      final businessProvider = context.read<BusinessProvider>();
+      
+      // Wait a bit for business to load
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (businessProvider.userBusiness != null) {
+        final businessId = businessProvider.userBusiness!.id;
+        print('⭐ Loading review statistics for business: $businessId');
+        
+        final statistics = await _reviewService.getReviewStatistics(businessId);
+        
+        if (mounted) {
+          setState(() {
+            _reviewStatistics = statistics;
+          });
+          print('⭐ Review statistics loaded: $statistics');
+        }
+      }
+    } catch (e) {
+      print('❌ Error loading review statistics: $e');
+    }
+  }
+
+  // Load business offers
+  Future<void> _loadBusinessOffers() async {
+    try {
+      final businessProvider = context.read<BusinessProvider>();
+      final offerProvider = context.read<OfferProvider>();
+      
+      // Wait a bit for business to load
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (businessProvider.userBusiness != null) {
+        final businessId = businessProvider.userBusiness!.id;
+        print('🎯 Loading offers for business: $businessId');
+        
+        await offerProvider.loadBusinessOffers(businessId);
+        print('🎯 Offers loaded successfully');
+      }
+    } catch (e) {
+      print('❌ Error loading business offers: $e');
+    }
   }
 
   // Load real bookings for the business
@@ -298,6 +360,71 @@ class _BusinessDashboardTabState extends State<BusinessDashboardTab> {
                       );
                     },
                   ),
+                  const SizedBox(height: 16),
+                  
+                  // Reviews Quick Access
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const BusinessReviewsPage(),
+                        ),
+                      );
+                    },
+                    child: Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.star,
+                                color: Colors.amber,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Customer Reviews',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'View and manage customer feedback',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.arrow_forward_ios,
+                              color: AppColors.primary,
+                              size: 16,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -489,17 +616,54 @@ class _BusinessDashboardTabState extends State<BusinessDashboardTab> {
           children: [
             Row(
               children: [
+                // Business thumbnail or fallback icon
                 Container(
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: AppColors.primary,
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[300]!, width: 1),
                   ),
-                  child: const Icon(
-                    Icons.business,
-                    color: Colors.white,
-                    size: 32,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(11),
+                    child: business.profileImageUrl != null && business.profileImageUrl!.isNotEmpty
+                        ? Image.network(
+                            business.profileImageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: AppColors.primary,
+                                child: const Icon(
+                                  Icons.business,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                              );
+                            },
+                          )
+                        : business.imageUrls.isNotEmpty
+                            ? Image.network(
+                                business.imageUrls.first,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    color: AppColors.primary,
+                                    child: const Icon(
+                                      Icons.business,
+                                      color: Colors.white,
+                                      size: 32,
+                                    ),
+                                  );
+                                },
+                              )
+                            : Container(
+                                color: AppColors.primary,
+                                child: const Icon(
+                                  Icons.business,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                              ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -628,14 +792,14 @@ class _BusinessDashboardTabState extends State<BusinessDashboardTab> {
                     Icon(Icons.star, color: Colors.amber, size: 18),
                     const SizedBox(width: 4),
                     Text(
-                      business.rating.toStringAsFixed(1),
+                      (_reviewStatistics['averageRating'] ?? 0.0).toStringAsFixed(1),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
                     Text(
-                      ' (${business.totalRatings} reviews)',
+                      ' (${_reviewStatistics['totalReviews'] ?? 0} reviews)',
                       style: TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 14,
@@ -1539,7 +1703,7 @@ class _BusinessQueueTabState extends State<BusinessQueueTab> {
                       Icon(Icons.access_time, size: 16, color: AppColors.textSecondary),
                       const SizedBox(width: 8),
                       Text(
-                        booking.appointmentSlot ?? 'No time slot',
+                        booking.appointmentSlot ?? booking.timeSlot,
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
@@ -2009,10 +2173,61 @@ class BusinessAnalyticsTab extends StatelessWidget {
         return Icons.no_accounts;
     }
   }
+
+
 }
 
-class BusinessProfileTab extends StatelessWidget {
+class BusinessProfileTab extends StatefulWidget {
   const BusinessProfileTab({super.key});
+
+  @override
+  State<BusinessProfileTab> createState() => _BusinessProfileTabState();
+}
+
+class _BusinessProfileTabState extends State<BusinessProfileTab> {
+  final ReviewService _reviewService = ReviewService();
+  Map<String, dynamic> _reviewStatistics = {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadReviewStatistics();
+    });
+  }
+
+  // Load real review statistics for the business
+  Future<void> _loadReviewStatistics() async {
+    try {
+      final businessProvider = context.read<BusinessProvider>();
+      
+      // Wait a bit for business to load
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (businessProvider.userBusiness != null) {
+        final businessId = businessProvider.userBusiness!.id;
+        print('⭐ Loading review statistics for business profile: $businessId');
+        
+        final statistics = await _reviewService.getReviewStatistics(businessId);
+        
+        if (mounted) {
+          setState(() {
+            _reviewStatistics = statistics;
+          });
+          print('⭐ Profile review statistics loaded: $statistics');
+        }
+      }
+    } catch (e) {
+      print('❌ Error loading profile review statistics: $e');
+    }
+  }
+
+  String _buildDynamicRatingText() {
+    final averageRating = _reviewStatistics['averageRating'] ?? 0.0;
+    final totalReviews = _reviewStatistics['totalReviews'] ?? 0;
+    
+    return '${averageRating.toStringAsFixed(1)} ($totalReviews reviews)';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2127,7 +2342,7 @@ class BusinessProfileTab extends StatelessWidget {
                           _buildBusinessInfoTile(
                             Icons.star,
                             'Rating',
-                            '${business.rating.toStringAsFixed(1)} (${business.totalRatings} reviews)',
+                            _buildDynamicRatingText(),
                           ),
                           _buildBusinessInfoTile(
                             business.isActive ? Icons.check_circle : Icons.cancel,
@@ -2217,6 +2432,74 @@ class BusinessProfileTab extends StatelessWidget {
                               ],
                             ),
                         ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Photo Gallery Management
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: PhotoGalleryWidget(
+                        businessId: business.id,
+                        imageUrls: business.imageUrls, // Use imageUrls instead of galleryUrls
+                        onImagesUpdated: (urls) {
+                          // Update business with new image URLs
+                          final updatedBusiness = business.copyWith(imageUrls: urls);
+                          businessProvider.updateBusiness(updatedBusiness);
+                        },
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Offers Management
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Consumer<OfferProvider>(
+                        builder: (context, offerProvider, child) {
+                          return OfferManagementWidget(
+                            offers: offerProvider.businessOffers,
+                            businessId: business.id,
+                            onOfferCreated: (offer) async {
+                              final success = await offerProvider.createOffer(offer);
+                              if (success && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Offer created successfully!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
+                            },
+                            onOfferUpdated: (offer) async {
+                              final success = await offerProvider.updateOffer(offer);
+                              if (success && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Offer updated successfully!'),
+                                    backgroundColor: Colors.blue,
+                                  ),
+                                );
+                              }
+                            },
+                            onOfferDeleted: (offerId) async {
+                              final success = await offerProvider.deleteOffer(offerId);
+                              if (success && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Offer deleted successfully!'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            },
+                          );
+                        },
                       ),
                     ),
                   ),

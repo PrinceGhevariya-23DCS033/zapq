@@ -8,12 +8,15 @@ class BusinessModel {
   final String phoneNumber;
   final String? email;
   final List<String> imageUrls;
+  final List<String> galleryUrls; // Additional photo gallery
+  final String? profileImageUrl; // Main business profile image
   final Map<String, String> operatingHours; // day: "09:00-18:00"
   final int maxCustomersPerDay;
   final int averageServiceTimeMinutes;
   final bool isActive;
   final double rating;
   final int totalRatings;
+  final int reviewCount;
   final DateTime createdAt;
   final DateTime updatedAt;
   
@@ -31,12 +34,15 @@ class BusinessModel {
     required this.phoneNumber,
     this.email,
     this.imageUrls = const [],
+    this.galleryUrls = const [],
+    this.profileImageUrl,
     this.operatingHours = const {},
     this.maxCustomersPerDay = 50,
     this.averageServiceTimeMinutes = 15,
     this.isActive = true,
     this.rating = 0.0,
     this.totalRatings = 0,
+    this.reviewCount = 0,
     required this.createdAt,
     required this.updatedAt,
     this.services = const [],
@@ -54,12 +60,15 @@ class BusinessModel {
       phoneNumber: json['phoneNumber'] ?? '',
       email: json['email'],
       imageUrls: List<String>.from(json['imageUrls'] ?? []),
+      galleryUrls: List<String>.from(json['galleryUrls'] ?? []),
+      profileImageUrl: json['profileImageUrl'],
       operatingHours: Map<String, String>.from(json['operatingHours'] ?? {}),
       maxCustomersPerDay: json['maxCustomersPerDay'] ?? 50,
       averageServiceTimeMinutes: json['averageServiceTimeMinutes'] ?? 15,
       isActive: json['isActive'] ?? true,
       rating: (json['rating'] ?? 0.0).toDouble(),
       totalRatings: json['totalRatings'] ?? 0,
+      reviewCount: json['reviewCount'] ?? 0,
       createdAt: DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),
       updatedAt: DateTime.parse(json['updatedAt'] ?? DateTime.now().toIso8601String()),
       services: (json['services'] as List<dynamic>?)
@@ -82,12 +91,15 @@ class BusinessModel {
       'phoneNumber': phoneNumber,
       'email': email,
       'imageUrls': imageUrls,
+      'galleryUrls': galleryUrls,
+      'profileImageUrl': profileImageUrl,
       'operatingHours': operatingHours,
       'maxCustomersPerDay': maxCustomersPerDay,
       'averageServiceTimeMinutes': averageServiceTimeMinutes,
       'isActive': isActive,
       'rating': rating,
       'totalRatings': totalRatings,
+      'reviewCount': reviewCount,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'services': services.map((service) => service.toJson()).toList(),
@@ -105,12 +117,15 @@ class BusinessModel {
     String? phoneNumber,
     String? email,
     List<String>? imageUrls,
+    List<String>? galleryUrls,
+    String? profileImageUrl,
     Map<String, String>? operatingHours,
     int? maxCustomersPerDay,
     int? averageServiceTimeMinutes,
     bool? isActive,
     double? rating,
     int? totalRatings,
+    int? reviewCount,
     List<ServiceModel>? services,
     BusinessHours? businessHours,
     DateTime? createdAt,
@@ -126,12 +141,15 @@ class BusinessModel {
       phoneNumber: phoneNumber ?? this.phoneNumber,
       email: email ?? this.email,
       imageUrls: imageUrls ?? this.imageUrls,
+      galleryUrls: galleryUrls ?? this.galleryUrls,
+      profileImageUrl: profileImageUrl ?? this.profileImageUrl,
       operatingHours: operatingHours ?? this.operatingHours,
       maxCustomersPerDay: maxCustomersPerDay ?? this.maxCustomersPerDay,
       averageServiceTimeMinutes: averageServiceTimeMinutes ?? this.averageServiceTimeMinutes,
       isActive: isActive ?? this.isActive,
       rating: rating ?? this.rating,
       totalRatings: totalRatings ?? this.totalRatings,
+      reviewCount: reviewCount ?? this.reviewCount,
       services: services ?? this.services,
       businessHours: businessHours ?? this.businessHours,
       createdAt: createdAt ?? this.createdAt,

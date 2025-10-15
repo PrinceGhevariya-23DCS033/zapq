@@ -8,9 +8,8 @@ class AuthProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
-  // Configure GoogleSignIn with web client ID for better compatibility
+  // Configure GoogleSignIn - remove clientId to use default from google-services.json
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: '519618748711-6cqqhunstbi64iffr9b7eqjbm3o20dvm.apps.googleusercontent.com',
     scopes: ['email', 'profile'],
   );
 
@@ -279,31 +278,14 @@ class AuthProvider extends ChangeNotifier {
 
       print('🔍 Starting Google Sign-In process...');
       print('📱 Package name: com.zappq.queue');
-      print('🔑 Using client ID: 519618748711-6cqqhunstbi64iffr9b7eqjbm3o20dvm.apps.googleusercontent.com');
 
-      // Check Google Play Services availability
-      try {
-        final bool isAvailable = await _googleSignIn.isSignedIn();
-        print('📱 Google Play Services check passed: $isAvailable');
-      } catch (e) {
-        print('❌ Google Play Services error: $e');
-        _setError('Google Play Services not available. Please update Google Play Services.');
-        return false;
-      }
-
-      // Clear any existing session
+      // Sign out first to ensure clean state
       await _googleSignIn.signOut();
       print('🚪 Cleared existing Google session');
 
-      // Attempt sign in with timeout
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn().timeout(
-        Duration(seconds: 30),
-        onTimeout: () {
-          print('⏰ Google Sign-In timeout');
-          throw Exception('Sign-in timeout. Please try again.');
-        },
-      );
-      
+      // Attempt sign in
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
       if (googleUser == null) {
         print('❌ Google sign-in was cancelled by user');
         _setError('Google sign-in was cancelled.');
@@ -311,14 +293,14 @@ class AuthProvider extends ChangeNotifier {
       }
 
       print('👤 Google user obtained: ${googleUser.email}');
+      print('🆔 Google ID: ${googleUser.id}');
       print('📧 Display name: ${googleUser.displayName}');
-      print('🆔 User ID: ${googleUser.id}');
 
       // Get authentication details
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-
-      print('🔑 Access token length: ${googleAuth.accessToken?.length ?? 0}');
-      print('🎫 ID token length: ${googleAuth.idToken?.length ?? 0}');
+      
+      print('🔑 Access token available: ${googleAuth.accessToken != null}');
+      print('🎫 ID token available: ${googleAuth.idToken != null}');
 
       if (googleAuth.accessToken == null || googleAuth.idToken == null) {
         print('❌ Missing Google authentication tokens');
@@ -336,25 +318,37 @@ class AuthProvider extends ChangeNotifier {
 
       // Sign in to Firebase
       final UserCredential result = await _auth.signInWithCredential(credential);
-      
       _user = result.user;
-      
+
       if (_user != null) {
         print('✅ Firebase sign-in successful: ${_user!.uid}');
         print('📧 Firebase user email: ${_user!.email}');
+
+        // Check if user already exists in Firestore
+        final existingDoc = await _firestore.collection('users').doc(_user!.uid).get();
         
-        // Create user model
-        _userModel = UserModel(
-          id: _user!.uid,
-          email: _user!.email ?? '',
-          name: _user!.displayName ?? '',
-          phoneNumber: _user!.phoneNumber ?? '',
-          userType: 'customer',
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-        
-        print('✅ User model created for Google user');
+        if (existingDoc.exists) {
+          // Load existing user data
+          _userModel = UserModel.fromJson(existingDoc.data()!);
+          print('✅ Loaded existing user from Firestore');
+        } else {
+          // Create new user model
+          _userModel = UserModel(
+            id: _user!.uid,
+            email: _user!.email ?? '',
+            name: _user!.displayName ?? 'User',
+            phoneNumber: _user!.phoneNumber ?? '',
+            userType: 'customer',
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+
+          // Save new user data to Firestore
+          await _firestore.collection('users').doc(_user!.uid).set(_userModel!.toJson());
+          print('✅ New user data saved to Firestore successfully');
+        }
+
+        print('🎉 Google Sign-In completed successfully');
         return true;
       }
 
@@ -371,23 +365,58 @@ class AuthProvider extends ChangeNotifier {
       String errorString = e.toString();
       
       if (errorString.contains('ApiException: 10')) {
-        print('🔧 Error 10: DEVELOPER_ERROR - Configuration issue');
-        print('🔧 Check: SHA-1 fingerprint, OAuth client setup, package name');
-        _setError('Google Sign-In setup incomplete. Please use email/password for now.');
+        print('🔧 Error 10: DEVELOPER_ERROR - SHA-1 fingerprint mismatch');
+        print('🔧 Current SHA-1: 2B:EE:1C:95:A3:A8:86:48:4C:7C:15:90:A3:4C:AD:2E:EA:BD:A3:BE');
+        print('🔧 Registered SHA-1: d07c939a6fee4e208e9b22ad8c7e0619e1045bd8');
+        _setError('Google Sign-In temporarily unavailable. Please use email/password login.');
       } else if (errorString.contains('ApiException: 7')) {
         print('🔧 Error 7: NETWORK_ERROR');
         _setError('Network error. Please check your internet connection.');
       } else if (errorString.contains('ApiException: 8')) {
         print('🔧 Error 8: INTERNAL_ERROR');
         _setError('Google services internal error. Please try again.');
-      } else if (errorString.contains('timeout')) {
-        _setError('Sign-in timeout. Please try again.');
+      } else if (errorString.contains('ApiException: 12500')) {
+        print('🔧 Error 12500: SIGN_IN_REQUIRED');
+        _setError('Please try signing in again.');
+      } else if (errorString.contains('PlatformException')) {
+        print('🔧 Platform Exception - Check Google Play Services');
+        _setError('Google Play Services required. Please update Google Play Services.');
       } else {
-        _setError('Google Sign-In temporarily unavailable. Please use email/password.');
+        _setError('Google Sign-In failed. Please try email/password login.');
       }
       return false;
     } finally {
       _setLoading(false);
+    }
+  }
+
+  // Check Google Sign-In configuration
+  Future<bool> checkGoogleSignInConfiguration() async {
+    try {
+      print('🔍 Checking Google Sign-In configuration...');
+      print('📱 Package name: com.zappq.queue');
+      print('🔑 Current SHA-1: 2B:EE:1C:95:A3:A8:86:48:4C:7C:15:90:A3:4C:AD:2E:EA:BD:A3:BE');
+      print('🔑 Registered SHA-1: d07c939a6fee4e208e9b22ad8c7e0619e1045bd8');
+      
+      // Try to get current signed in account
+      final GoogleSignInAccount? currentUser = _googleSignIn.currentUser;
+      if (currentUser != null) {
+        print('✅ User already signed in: ${currentUser.email}');
+        return true;
+      }
+      
+      // Try silent sign-in
+      final GoogleSignInAccount? silentUser = await _googleSignIn.signInSilently();
+      if (silentUser != null) {
+        print('✅ Silent sign-in successful: ${silentUser.email}');
+        return true;
+      }
+      
+      print('⚠️ Google Sign-In requires manual authorization');
+      return false;
+    } catch (e) {
+      print('❌ Google Sign-In configuration check failed: $e');
+      return false;
     }
   }
 

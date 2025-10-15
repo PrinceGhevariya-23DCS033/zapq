@@ -6,8 +6,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/providers/auth_provider.dart';
 import '../../../../shared/providers/enhanced_business_provider.dart';
 import '../../../../shared/providers/booking_provider.dart';
-import '../../../../shared/models/business_model.dart';
 import '../../../../shared/models/booking_model.dart';
+import '../../../../shared/widgets/business_list_widget.dart';
 import 'business_details_page.dart';
 import 'customer_bookings_page.dart';
 
@@ -383,16 +383,19 @@ class _CustomerHomeTabState extends State<CustomerHomeTab> {
                 );
               }
 
-              return SliverPadding(
-                padding: const EdgeInsets.all(16),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final business = businessProvider.businesses[index];
-                      return _buildBusinessCard(business);
-                    },
-                    childCount: businessProvider.businesses.length,
-                  ),
+              return SliverFillRemaining(
+                child: BusinessListWidget(
+                  businesses: businessProvider.businesses,
+                  searchQuery: _searchQuery,
+                  onBusinessTap: (business) {
+                    context.read<BusinessProvider>().setSelectedBusiness(business);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => BusinessDetailsPage(business: business),
+                      ),
+                    );
+                  },
                 ),
               );
             },
@@ -453,266 +456,7 @@ class _CustomerHomeTabState extends State<CustomerHomeTab> {
     );
   }
 
-  Widget _buildBusinessCard(BusinessModel business) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: InkWell(
-        onTap: () {
-          context.read<BusinessProvider>().setSelectedBusiness(business);
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => BusinessDetailsPage(business: business),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        splashColor: AppColors.primary.withValues(alpha: 0.1),
-        highlightColor: AppColors.primary.withValues(alpha: 0.05),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  // Business Image Placeholder
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      _getCategoryIcon(business.category),
-                      color: AppColors.primary,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          business.name,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                              ),
-                              child: Text(
-                                _getCategoryDisplayName(business.category),
-                                style: TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Icon(
-                              Icons.star,
-                              color: Colors.amber,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${business.rating.toStringAsFixed(1)} (${business.totalRatings})',
-                              style: TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: business.isActive
-                          ? AppColors.success.withValues(alpha: 0.1)
-                          : AppColors.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      business.isActive ? 'Open' : 'Closed',
-                      style: TextStyle(
-                        color: business.isActive
-                            ? AppColors.success
-                            : AppColors.error,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                business.description,
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 14,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(
-                    Icons.location_on_outlined,
-                    color: AppColors.textLight,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      business.address,
-                      style: TextStyle(
-                        color: AppColors.textLight,
-                        fontSize: 12,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => BusinessDetailsPage(business: business),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      minimumSize: Size.zero,
-                    ),
-                    child: const Text(
-                      'Book Now',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
-  IconData _getCategoryIcon(String category) {
-    switch (category) {
-      case 'salon':
-        return Icons.content_cut;
-      case 'beauty_parlor':
-        return Icons.face;
-      case 'barbershop':
-        return Icons.face_retouching_natural;
-      case 'spa':
-        return Icons.spa;
-      case 'medical':
-        return Icons.local_hospital;
-      case 'dental':
-        return Icons.medical_services;
-      case 'restaurant':
-        return Icons.restaurant;
-      case 'retail':
-        return Icons.shopping_bag;
-      case 'fitness':
-        return Icons.fitness_center;
-      case 'auto':
-        return Icons.car_repair;
-      case 'education':
-        return Icons.school;
-      case 'pharmacy':
-        return Icons.local_pharmacy;
-      case 'pet':
-        return Icons.pets;
-      case 'home_services':
-        return Icons.home_repair_service;
-      default:
-        return Icons.store;
-    }
-  }
-
-  String _getCategoryDisplayName(String category) {
-    // Handle both old and new category formats
-    String normalizedCategory = category.toLowerCase().replaceAll(' ', '_').replaceAll('&_', '').replaceAll('__', '_');
-    
-    switch (normalizedCategory) {
-      case 'salon':
-      case 'hair_salon':
-        return 'Hair Salon';
-      case 'beauty_parlor':
-        return 'Beauty Parlor';
-      case 'barbershop':
-      case 'barber_shop':
-        return 'Barbershop';
-      case 'spa':
-      case 'spa_wellness':
-        return 'Spa & Wellness';
-      case 'medical':
-      case 'medical_clinic':
-        return 'Medical Clinic';
-      case 'dental':
-      case 'dental_clinic':
-        return 'Dental Clinic';
-      case 'restaurant':
-        return 'Restaurant';
-      case 'retail':
-        return 'Retail Shop';
-      case 'fitness':
-      case 'gym_fitness':
-        return 'Fitness Center';
-      case 'auto':
-        return 'Auto Service';
-      case 'education':
-        return 'Education';
-      case 'pharmacy':
-        return 'Pharmacy';
-      case 'pet':
-        return 'Pet Services';
-      case 'home_services':
-        return 'Home Services';
-      default:
-        // If it's already in a readable format, return as is
-        return category.split('_').map((word) => 
-          word.substring(0, 1).toUpperCase() + word.substring(1)
-        ).join(' ');
-    }
-  }
 
   @override
   void dispose() {

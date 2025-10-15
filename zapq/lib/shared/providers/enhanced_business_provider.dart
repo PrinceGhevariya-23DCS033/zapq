@@ -216,34 +216,6 @@ class BusinessProvider extends ChangeNotifier {
     }
   }
 
-  // Helper method to normalize category values
-  String _normalizeCategory(String category) {
-    switch (category) {
-      case 'Salon':
-      case 'Hair Salon':
-        return 'salon';
-      case 'Beauty Parlor':
-        return 'beauty_parlor';
-      case 'Barber Shop':
-      case 'Barbershop':
-        return 'barbershop';
-      case 'Spa & Wellness':
-      case 'Spa':
-        return 'spa';
-      case 'Medical Clinic':
-      case 'Medical':
-        return 'medical';
-      case 'Dental Clinic':
-      case 'Dental':
-        return 'dental';
-      case 'Gym & Fitness':
-      case 'Fitness':
-        return 'fitness';
-      default:
-        return category.toLowerCase();
-    }
-  }
-
   // Get user's businesses
   Future<void> getUserBusinesses(String userId) async {
     try {
@@ -307,7 +279,13 @@ class BusinessProvider extends ChangeNotifier {
       _setLoading(true);
       _setError(null);
 
-      await _firestore.collection('businesses').doc(business.id).update(business.toJson());
+      print('💾 Updating business in Firestore:');
+      print('📸 ProfileImageUrl: ${business.profileImageUrl}');
+      print('📷 ImageUrls: ${business.imageUrls}');
+      final businessJson = business.toJson();
+      print('📄 Business JSON: $businessJson');
+
+      await _firestore.collection('businesses').doc(business.id).update(businessJson);
       
       // Update local lists
       final index = _userBusinesses.indexWhere((b) => b.id == business.id);

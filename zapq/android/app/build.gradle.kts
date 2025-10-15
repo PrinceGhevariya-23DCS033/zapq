@@ -18,7 +18,8 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = "11"
+        freeCompilerArgs += listOf("-Xjvm-default=all")
     }
 
     defaultConfig {

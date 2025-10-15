@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/providers/enhanced_business_provider.dart';
 import '../../../../shared/models/business_model.dart';
+import '../../../../shared/services/photo_upload_service.dart';
 
 class BusinessRegistrationPage extends StatefulWidget {
   const BusinessRegistrationPage({super.key});
@@ -38,6 +41,13 @@ class _BusinessRegistrationPageState extends State<BusinessRegistrationPage> {
 
   final List<ServiceModel> _services = [];
   BusinessHours _businessHours = BusinessHours.defaultHours();
+  
+  // Image upload related
+  final List<File> _selectedImages = [];
+  final List<String> _uploadedImageUrls = [];
+  File? _thumbnailImage;
+  String? _uploadedThumbnailUrl;
+
 
   String _getCategoryDisplayName(String category) {
     switch (category) {
@@ -99,12 +109,29 @@ class _BusinessRegistrationPageState extends State<BusinessRegistrationPage> {
             children: [
               CircularProgressIndicator(),
               SizedBox(height: 16),
-              Text('Registering your business...'),
+              Text('Uploading images and registering business...'),
             ],
           ),
         ),
       );
 
+      // Upload images first
+      await _uploadImages();
+
+      // Convert BusinessHours to operatingHours map
+      final operatingHoursMap = <String, String>{};
+      _businessHours.hours.forEach((day, dayHours) {
+        if (dayHours.isOpen) {
+          operatingHoursMap[day] = '${dayHours.openTime}-${dayHours.closeTime}';
+        } else {
+          operatingHoursMap[day] = 'Closed';
+        }
+      });
+
+      print('🏪 Creating business with images:');
+      print('📸 Thumbnail URL: $_uploadedThumbnailUrl');
+      print('📷 Gallery URLs: $_uploadedImageUrls');
+      
       final business = BusinessModel(
         id: '',
         ownerId: '',
@@ -114,8 +141,9 @@ class _BusinessRegistrationPageState extends State<BusinessRegistrationPage> {
         address: _addressController.text.trim(),
         phoneNumber: _phoneController.text.trim(),
         email: _emailController.text.trim(),
-        imageUrls: [],
-        operatingHours: {},
+        imageUrls: _uploadedImageUrls,
+        profileImageUrl: _uploadedThumbnailUrl,
+        operatingHours: operatingHoursMap,
         maxCustomersPerDay: 50,
         averageServiceTimeMinutes: 30,
         isActive: true,
@@ -243,6 +271,98 @@ class _BusinessRegistrationPageState extends State<BusinessRegistrationPage> {
     );
   }
 
+  Future<void> _pickThumbnail() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      
+      if (image != null) {
+        setState(() {
+          _thumbnailImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking thumbnail: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickImages() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final List<XFile> images = await picker.pickMultiImage();
+      
+      if (images.isNotEmpty) {
+        setState(() {
+          for (var image in images) {
+            if (_selectedImages.length < 10) { // Limit to 10 images
+              _selectedImages.add(File(image.path));
+            }
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking images: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _removeImage(int index) {
+    setState(() {
+      _selectedImages.removeAt(index);
+    });
+  }
+
+  Future<void> _uploadImages() async {
+
+
+    try {
+      final photoUploadService = PhotoUploadService();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      
+      // Upload thumbnail first
+      if (_thumbnailImage != null) {
+        _uploadedThumbnailUrl = await photoUploadService.uploadImage(
+          imageFile: _thumbnailImage!,
+          folderPath: 'business_thumbnails',
+          fileName: 'thumbnail_$timestamp.jpg',
+        );
+      }
+      
+      // Upload gallery images
+      if (_selectedImages.isNotEmpty) {
+        final uploadedUrls = await photoUploadService.uploadMultipleImages(
+          imageFiles: _selectedImages,
+          folderPath: 'business_gallery/temp_$timestamp',
+        );
+        _uploadedImageUrls.addAll(uploadedUrls);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error uploading images: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -365,6 +485,207 @@ class _BusinessRegistrationPageState extends State<BusinessRegistrationPage> {
                         ),
                         keyboardType: TextInputType.emailAddress,
                       ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Business Photos Section
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Business Photos',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Thumbnail/Logo Section
+                      Text(
+                        'Business Logo/Thumbnail',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Select a main image that will appear as your business logo in listings',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: _pickThumbnail,
+                            child: Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: _thumbnailImage != null ? AppColors.primary : Colors.grey[300]!,
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: _thumbnailImage != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Image.file(
+                                        _thumbnailImage!,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
+                                  : Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.add_photo_alternate,
+                                          color: Colors.grey[400],
+                                          size: 32,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Add Logo',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          if (_thumbnailImage != null)
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _thumbnailImage = null;
+                                });
+                              },
+                              icon: const Icon(Icons.delete, size: 16),
+                              label: const Text('Remove'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red[100],
+                                foregroundColor: Colors.red[700],
+                              ),
+                            ),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 24),
+                      
+                      // Gallery Section
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Photo Gallery',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: _pickImages,
+                            icon: const Icon(Icons.add_photo_alternate),
+                            label: const Text('Add Photos'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Add additional photos to showcase your business (maximum 10 photos)',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      if (_selectedImages.isEmpty)
+                        Container(
+                          height: 100,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'No photos selected\nTap "Add Photos" to get started',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                        )
+                      else
+                        SizedBox(
+                          height: 120,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _selectedImages.length,
+                            itemBuilder: (context, index) {
+                              return Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        _selectedImages[index],
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: Container(
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: IconButton(
+                                          icon: const Icon(
+                                            Icons.close,
+                                            color: Colors.white,
+                                            size: 16,
+                                          ),
+                                          onPressed: () => _removeImage(index),
+                                          constraints: const BoxConstraints(
+                                            minWidth: 24,
+                                            minHeight: 24,
+                                          ),
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      
+                      if (_selectedImages.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            '${_selectedImages.length} photo(s) selected',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),

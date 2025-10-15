@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/providers/enhanced_business_provider.dart';
 import '../../../../shared/models/business_model.dart';
+import '../../../../shared/services/photo_upload_service.dart';
 
 class BusinessEditPage extends StatefulWidget {
   final String businessId;
@@ -42,6 +45,15 @@ class _BusinessEditPageState extends State<BusinessEditPage> {
   BusinessHours _businessHours = BusinessHours.defaultHours();
   bool _isLoading = false;
   bool _hasChanges = false;
+  
+  // Image upload related
+  final List<File> _selectedImages = [];
+  final List<String> _existingImageUrls = [];
+  final List<String> _newImageUrls = [];
+  File? _newThumbnailImage;
+  String? _existingThumbnailUrl;
+  String? _newThumbnailUrl;
+
 
   String _getCategoryDisplayName(String category) {
     switch (category) {
@@ -78,11 +90,20 @@ class _BusinessEditPageState extends State<BusinessEditPage> {
     _loadBusiness();
   }
 
-  void _loadBusiness() {
+  void _loadBusiness() async {
     final businessProvider = context.read<BusinessProvider>();
+    
+    // Refresh business data from server
+    print('🔄 Refreshing business data from server...');
+    await businessProvider.loadUserBusiness();
+    
     setState(() {
       _business = businessProvider.userBusiness;
       if (_business != null) {
+        print('🏪 Loading business for edit:');
+        print('📸 Profile image URL: ${_business!.profileImageUrl}');
+        print('📷 Image URLs: ${_business!.imageUrls}');
+        
         _nameController.text = _business!.name;
         _descriptionController.text = _business!.description;
         _addressController.text = _business!.address;
@@ -90,6 +111,14 @@ class _BusinessEditPageState extends State<BusinessEditPage> {
         _emailController.text = _business!.email ?? '';
         _selectedCategory = _business!.category;
         _businessHours = _business!.businessHours;
+        _existingImageUrls.clear();
+        _existingImageUrls.addAll(_business!.imageUrls);
+        _existingThumbnailUrl = _business!.profileImageUrl;
+        
+        print('📸 Loaded thumbnail URL: $_existingThumbnailUrl');
+        print('📷 Loaded image URLs: $_existingImageUrls');
+      } else {
+        print('❌ No business data found!');
       }
     });
   }
@@ -320,6 +349,346 @@ class _BusinessEditPageState extends State<BusinessEditPage> {
 
               const SizedBox(height: 16),
 
+              // Business Photos Section
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Business Photos',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Thumbnail/Logo Section
+                      Text(
+                        'Business Logo/Thumbnail',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Main image that appears as your business logo in listings',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: _pickThumbnail,
+                            child: Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: (_newThumbnailImage != null || _existingThumbnailUrl != null) 
+                                      ? AppColors.primary : Colors.grey[300]!,
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: _newThumbnailImage != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Image.file(
+                                        _newThumbnailImage!,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
+                                  : _existingThumbnailUrl != null && _existingThumbnailUrl!.isNotEmpty
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(6),
+                                          child: Image.network(
+                                            _existingThumbnailUrl!,
+                                            fit: BoxFit.cover,
+                                            loadingBuilder: (context, child, loadingProgress) {
+                                              if (loadingProgress == null) return child;
+                                              return Container(
+                                                width: 100,
+                                                height: 100,
+                                                color: Colors.grey[100],
+                                                child: const Center(
+                                                  child: CircularProgressIndicator(),
+                                                ),
+                                              );
+                                            },
+                                            errorBuilder: (context, error, stackTrace) {
+                                              print('❌ Error loading thumbnail: $error');
+                                              print('🔗 URL: $_existingThumbnailUrl');
+                                              return Container(
+                                                color: Colors.grey[300],
+                                                child: Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    const Icon(Icons.error, color: Colors.red),
+                                                    Text('Failed to load', 
+                                                      style: TextStyle(fontSize: 10, color: Colors.red),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        )
+                                      : Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.add_photo_alternate,
+                                              color: Colors.grey[400],
+                                              size: 32,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Add Logo',
+                                              style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          if (_newThumbnailImage != null || _existingThumbnailUrl != null)
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _newThumbnailImage = null;
+                                  _existingThumbnailUrl = null;
+                                });
+                                _markChanged();
+                              },
+                              icon: const Icon(Icons.delete, size: 16),
+                              label: const Text('Remove'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red[100],
+                                foregroundColor: Colors.red[700],
+                              ),
+                            ),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 24),
+                      
+                      // Gallery Section Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Photo Gallery',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: _pickImages,
+                            icon: const Icon(Icons.add_photo_alternate),
+                            label: const Text('Add Photos'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Additional photos to showcase your business (maximum 10 photos total)',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Existing Images
+                      if (_existingImageUrls.isNotEmpty) ...[
+                        Text(
+                          'Current Photos',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 120,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _existingImageUrls.length,
+                            itemBuilder: (context, index) {
+                              return Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.network(
+                                        _existingImageUrls[index],
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                        loadingBuilder: (context, child, loadingProgress) {
+                                          if (loadingProgress == null) return child;
+                                          return Container(
+                                            width: 100,
+                                            height: 100,
+                                            color: Colors.grey[100],
+                                            child: const Center(
+                                              child: CircularProgressIndicator(),
+                                            ),
+                                          );
+                                        },
+                                        errorBuilder: (context, error, stackTrace) {
+                                          print('❌ Error loading gallery image ${index}: $error');
+                                          print('🔗 URL: ${_existingImageUrls[index]}');
+                                          return Container(
+                                            width: 100,
+                                            height: 100,
+                                            color: Colors.grey[300],
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                const Icon(Icons.error, color: Colors.red, size: 20),
+                                                Text('Failed', 
+                                                  style: TextStyle(fontSize: 8, color: Colors.red),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: Container(
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: IconButton(
+                                          icon: const Icon(
+                                            Icons.close,
+                                            color: Colors.white,
+                                            size: 16,
+                                          ),
+                                          onPressed: () => _removeExistingImage(index),
+                                          constraints: const BoxConstraints(
+                                            minWidth: 24,
+                                            minHeight: 24,
+                                          ),
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      
+                      // New Images
+                      if (_selectedImages.isNotEmpty) ...[
+                        Text(
+                          'New Photos to Upload',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 120,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _selectedImages.length,
+                            itemBuilder: (context, index) {
+                              return Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.file(
+                                        _selectedImages[index],
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: Container(
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: IconButton(
+                                          icon: const Icon(
+                                            Icons.close,
+                                            color: Colors.white,
+                                            size: 16,
+                                          ),
+                                          onPressed: () => _removeNewImage(index),
+                                          constraints: const BoxConstraints(
+                                            minWidth: 24,
+                                            minHeight: 24,
+                                          ),
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                      
+                      // No photos message
+                      if (_existingImageUrls.isEmpty && _selectedImages.isEmpty)
+                        Container(
+                          height: 100,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'No photos yet\nTap "Add Photos" to add some',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                        ),
+                      
+                      // Photo count
+                      if (_existingImageUrls.isNotEmpty || _selectedImages.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            '${_existingImageUrls.length + _selectedImages.length} photo(s) total',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
               // Business Hours
               Card(
                 child: Padding(
@@ -523,6 +892,119 @@ class _BusinessEditPageState extends State<BusinessEditPage> {
     );
   }
 
+  Future<void> _pickThumbnail() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      
+      if (image != null) {
+        setState(() {
+          _newThumbnailImage = File(image.path);
+        });
+        _markChanged();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking thumbnail: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickImages() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final List<XFile> images = await picker.pickMultiImage();
+      
+      if (images.isNotEmpty) {
+        setState(() {
+          for (var image in images) {
+            if ((_selectedImages.length + _existingImageUrls.length) < 10) { // Limit to 10 images total
+              _selectedImages.add(File(image.path));
+            }
+          }
+        });
+        _markChanged();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking images: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _removeNewImage(int index) {
+    setState(() {
+      _selectedImages.removeAt(index);
+    });
+  }
+
+  void _removeExistingImage(int index) {
+    setState(() {
+      _existingImageUrls.removeAt(index);
+    });
+    _markChanged();
+  }
+
+  Future<void> _uploadNewImages() async {
+    if (_selectedImages.isEmpty && _newThumbnailImage == null) {
+      print('🚫 No new images to upload');
+      return;
+    }
+
+    print('⬆️ Starting image upload process...');
+    print('📸 New thumbnail image: ${_newThumbnailImage != null ? 'Yes' : 'No'}');
+    print('📷 New gallery images: ${_selectedImages.length}');
+
+    try {
+      final photoUploadService = PhotoUploadService();
+      
+      // Upload new thumbnail if selected
+      if (_newThumbnailImage != null) {
+        print('⬆️ Uploading new thumbnail...');
+        _newThumbnailUrl = await photoUploadService.uploadImage(
+          imageFile: _newThumbnailImage!,
+          folderPath: 'business_thumbnails',
+          fileName: 'thumbnail_${_business!.id}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+        print('✅ Thumbnail uploaded: $_newThumbnailUrl');
+      }
+      
+      // Upload gallery images
+      if (_selectedImages.isNotEmpty) {
+        print('⬆️ Uploading ${_selectedImages.length} gallery images...');
+        final uploadedUrls = await photoUploadService.uploadMultipleImages(
+          imageFiles: _selectedImages,
+          folderPath: 'business_gallery/${_business!.id}',
+        );
+        _newImageUrls.addAll(uploadedUrls);
+        print('✅ Gallery images uploaded: $uploadedUrls');
+      }
+      
+      _selectedImages.clear(); // Clear selected images after upload
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error uploading images: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+
+    }
+  }
+
   Future<void> _saveBusiness() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -531,6 +1013,33 @@ class _BusinessEditPageState extends State<BusinessEditPage> {
 
       try {
         final businessProvider = context.read<BusinessProvider>();
+        
+        // Upload new images first
+        await _uploadNewImages();
+        
+        // Combine existing and new image URLs
+        final allImageUrls = [..._existingImageUrls, ..._newImageUrls];
+        
+        // Determine final thumbnail URL
+        final finalThumbnailUrl = _newThumbnailUrl ?? _existingThumbnailUrl;
+        
+        print('🔄 Updating business with images:');
+        print('📸 Final thumbnail URL: $finalThumbnailUrl');
+        print('📷 All image URLs: $allImageUrls');
+        print('🔗 New thumbnail URL: $_newThumbnailUrl');
+        print('🔗 Existing thumbnail URL: $_existingThumbnailUrl');
+        print('📋 New image URLs: $_newImageUrls');
+        print('📋 Existing image URLs: $_existingImageUrls');
+        
+        // Convert BusinessHours to operatingHours map
+        final operatingHoursMap = <String, String>{};
+        _businessHours.hours.forEach((day, dayHours) {
+          if (dayHours.isOpen) {
+            operatingHoursMap[day] = '${dayHours.openTime}-${dayHours.closeTime}';
+          } else {
+            operatingHoursMap[day] = 'Closed';
+          }
+        });
         
         // Update business with new data
         final updatedBusiness = _business!.copyWith(
@@ -541,6 +1050,9 @@ class _BusinessEditPageState extends State<BusinessEditPage> {
           phoneNumber: _phoneController.text.trim(),
           email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
           businessHours: _businessHours,
+          operatingHours: operatingHoursMap,
+          imageUrls: allImageUrls,
+          profileImageUrl: finalThumbnailUrl,
           updatedAt: DateTime.now(),
         );
 
